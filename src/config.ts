@@ -63,6 +63,12 @@ export const TRIGGER_PATTERN = new RegExp(
   'i',
 );
 
+// Dashboard
+export const DASHBOARD_PORT = parseInt(
+  process.env.DASHBOARD_PORT || '3000',
+  10,
+);
+
 // Timezone for scheduled tasks (cron expressions, etc.)
 // Uses system timezone by default
 export const TIMEZONE =

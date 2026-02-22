@@ -327,6 +327,25 @@ export function getMessagesSince(
     .all(chatJid, sinceTimestamp, `${botPrefix}:%`) as NewMessage[];
 }
 
+/**
+ * Get all messages for a group (including bot messages) for dashboard display.
+ */
+export function getMessagesForDashboard(
+  chatJid: string,
+  sinceTimestamp: string,
+  limit: number,
+): NewMessage[] {
+  return db
+    .prepare(
+      `SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
+       FROM messages
+       WHERE chat_jid = ? AND timestamp > ?
+       ORDER BY timestamp DESC
+       LIMIT ?`,
+    )
+    .all(chatJid, sinceTimestamp, limit) as NewMessage[];
+}
+
 export function createTask(
   task: Omit<ScheduledTask, 'last_run' | 'last_result'>,
 ): void {
@@ -442,6 +461,14 @@ export function updateTaskAfterRun(
     WHERE id = ?
   `,
   ).run(nextRun, now, lastResult, nextRun, id);
+}
+
+export function getTaskRunLogs(taskId: string, limit = 20): TaskRunLog[] {
+  return db
+    .prepare(
+      'SELECT task_id, run_at, duration_ms, status, result, error FROM task_run_logs WHERE task_id = ? ORDER BY run_at DESC LIMIT ?',
+    )
+    .all(taskId, limit) as TaskRunLog[];
 }
 
 export function logTaskRun(log: TaskRunLog): void {

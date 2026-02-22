@@ -35,6 +35,8 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
 import { findChannel, formatMessages, formatOutbound } from './router.js';
+import { startDashboard } from './dashboard/server.js';
+import { dashboardEvents } from './dashboard/events.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -250,12 +252,18 @@ async function runAgent(
     new Set(Object.keys(registeredGroups)),
   );
 
-  // Wrap onOutput to track session ID from streamed results
+  // Wrap onOutput to track session ID and emit dashboard events
   const wrappedOnOutput = onOutput
     ? async (output: ContainerOutput) => {
         if (output.newSessionId) {
           sessions[group.folder] = output.newSessionId;
           setSession(group.folder, output.newSessionId);
+        }
+        if (output.result) {
+          dashboardEvents.emit('container:output', {
+            groupJid: chatJid,
+            text: typeof output.result === 'string' ? output.result : JSON.stringify(output.result),
+          });
         }
         await onOutput(output);
       }
@@ -427,7 +435,16 @@ async function main(): Promise<void> {
 
   // Channel callbacks (shared by all channels)
   const channelOpts = {
-    onMessage: (_chatJid: string, msg: NewMessage) => storeMessage(msg),
+    onMessage: (_chatJid: string, msg: NewMessage) => {
+      storeMessage(msg);
+      dashboardEvents.emit('message:new', {
+        chatJid: msg.chat_jid,
+        sender: msg.sender,
+        senderName: msg.sender_name,
+        content: msg.content,
+        timestamp: msg.timestamp,
+      });
+    },
     onChatMetadata: (chatJid: string, timestamp: string, name?: string, channel?: string, isGroup?: boolean) =>
       storeChatMetadata(chatJid, timestamp, name, channel, isGroup),
     registeredGroups: () => registeredGroups,
@@ -466,6 +483,15 @@ async function main(): Promise<void> {
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
   });
+  // Start dashboard server
+  startDashboard({
+    queue,
+    channels,
+    registeredGroups: () => registeredGroups,
+    isWhatsAppConnected: () => whatsapp?.isConnected() ?? false,
+    enqueueMessageCheck: (jid) => queue.enqueueMessageCheck(jid),
+  });
+
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
   startMessageLoop().catch((err) => {

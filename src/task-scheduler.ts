@@ -10,6 +10,7 @@ import {
   SCHEDULER_POLL_INTERVAL,
   TIMEZONE,
 } from './config.js';
+import { dashboardEvents } from './dashboard/events.js';
 import { ContainerOutput, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
 import {
   getAllTasks,
@@ -42,6 +43,11 @@ async function runTask(
     { taskId: task.id, group: task.group_folder },
     'Running scheduled task',
   );
+
+  dashboardEvents.emit('task:run', {
+    taskId: task.id,
+    groupFolder: task.group_folder,
+  });
 
   const groups = deps.registeredGroups();
   const group = Object.values(groups).find(
@@ -158,6 +164,13 @@ async function runTask(
     duration_ms: durationMs,
     status: error ? 'error' : 'success',
     result,
+    error,
+  });
+
+  dashboardEvents.emit('task:complete', {
+    taskId: task.id,
+    durationMs,
+    status: error ? 'error' : 'success',
     error,
   });
 

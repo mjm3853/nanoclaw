@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/groupcard.tsx","./src/components/messagerow.tsx","./src/components/statusbar.tsx","./src/components/taskrow.tsx","./src/hooks/useapi.ts","./src/hooks/usesse.ts","./src/pages/groups.tsx","./src/pages/messages.tsx","./src/pages/system.tsx","./src/pages/tasks.tsx"],"version":"5.7.3"}

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR, MAX_CONCURRENT_CONTAINERS } from './config.js';
+import { dashboardEvents } from './dashboard/events.js';
 import { logger } from './logger.js';
 
 interface QueuedTask {
@@ -55,6 +56,40 @@ export class GroupQueue {
 
   setProcessMessagesFn(fn: (groupJid: string) => Promise<boolean>): void {
     this.processMessagesFn = fn;
+  }
+
+  getSnapshot(): {
+    activeCount: number;
+    waitingCount: number;
+    maxConcurrent: number;
+    groups: Array<{
+      jid: string;
+      active: boolean;
+      idleWaiting: boolean;
+      pendingMessages: boolean;
+      pendingTaskCount: number;
+      containerName: string | null;
+      retryCount: number;
+    }>;
+  } {
+    const groups = [];
+    for (const [jid, state] of this.groups) {
+      groups.push({
+        jid,
+        active: state.active,
+        idleWaiting: state.idleWaiting,
+        pendingMessages: state.pendingMessages,
+        pendingTaskCount: state.pendingTasks.length,
+        containerName: state.containerName,
+        retryCount: state.retryCount,
+      });
+    }
+    return {
+      activeCount: this.activeCount,
+      waitingCount: this.waitingGroups.length,
+      maxConcurrent: MAX_CONCURRENT_CONTAINERS,
+      groups,
+    };
   }
 
   enqueueMessageCheck(groupJid: string): void {
@@ -128,6 +163,13 @@ export class GroupQueue {
     state.process = proc;
     state.containerName = containerName;
     if (groupFolder) state.groupFolder = groupFolder;
+
+    dashboardEvents.emit('container:start', {
+      groupJid,
+      containerName,
+      groupFolder: groupFolder || '',
+    });
+    this.emitQueueUpdate();
   }
 
   /**
@@ -210,11 +252,21 @@ export class GroupQueue {
       logger.error({ groupJid, err }, 'Error processing messages for group');
       this.scheduleRetry(groupJid, state);
     } finally {
+      const containerName = state.containerName;
       state.active = false;
       state.process = null;
       state.containerName = null;
       state.groupFolder = null;
       this.activeCount--;
+      if (containerName) {
+        dashboardEvents.emit('container:stop', {
+          groupJid,
+          containerName,
+          duration: 0,
+          exitCode: null,
+        });
+      }
+      this.emitQueueUpdate();
       this.drainGroup(groupJid);
     }
   }
@@ -236,12 +288,22 @@ export class GroupQueue {
     } catch (err) {
       logger.error({ groupJid, taskId: task.id, err }, 'Error running task');
     } finally {
+      const containerName = state.containerName;
       state.active = false;
       state.isTaskContainer = false;
       state.process = null;
       state.containerName = null;
       state.groupFolder = null;
       this.activeCount--;
+      if (containerName) {
+        dashboardEvents.emit('container:stop', {
+          groupJid,
+          containerName,
+          duration: 0,
+          exitCode: null,
+        });
+      }
+      this.emitQueueUpdate();
       this.drainGroup(groupJid);
     }
   }
@@ -316,6 +378,21 @@ export class GroupQueue {
       }
       // If neither pending, skip this group
     }
+  }
+
+  private emitQueueUpdate(): void {
+    const snapshot = this.getSnapshot();
+    dashboardEvents.emit('queue:update', {
+      activeCount: snapshot.activeCount,
+      waitingCount: snapshot.waitingCount,
+      groups: snapshot.groups.map((g) => ({
+        jid: g.jid,
+        active: g.active,
+        idleWaiting: g.idleWaiting,
+        pendingMessages: g.pendingMessages,
+        pendingTaskCount: g.pendingTaskCount,
+      })),
+    });
   }
 
   async shutdown(_gracePeriodMs: number): Promise<void> {

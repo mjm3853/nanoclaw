@@ -25,6 +25,26 @@ launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 ```
 
+## Dashboard
+
+A web dashboard at `localhost:3000` starts automatically with the main process. It provides live monitoring of message flow, group/container status, scheduled tasks, and system diagnostics — plus the ability to send messages through the agent pipeline directly from the browser.
+
+**In production**, the dashboard is served from a pre-built bundle. Build it once and it's available whenever the service runs:
+
+```bash
+npm run dashboard:build   # Build the React app to dashboard/dist/
+npm run dev               # Dashboard available at http://localhost:3000
+```
+
+**In development**, run the Vite dev server alongside the main process for hot reload:
+
+```bash
+npm run dev               # Start the Node process (API at :3000)
+npm run dashboard:dev     # Start Vite dev server at :5173 (proxies /api → :3000)
+```
+
+The port defaults to 3000 and can be changed with the `DASHBOARD_PORT` environment variable. The server binds to `127.0.0.1` only — it is not accessible from the network.
+
 ## What Runs Where
 
 The **host process** (Node.js) runs directly on your laptop. It handles the WhatsApp connection, SQLite database, message polling, task scheduling, and IPC coordination. WhatsApp auth credentials live in `store/auth/` on the host and are never exposed to containers.
